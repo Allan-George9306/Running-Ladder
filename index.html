@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Runner Ladder</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="hero">
+        <div class="hero__copy">
+          <p class="eyebrow">Crowd-ranked distance legends</p>
+          <h1>Runner Ladder</h1>
+          <p class="hero__text">
+            Browse the board, open a runner profile, and push athletes up or down the list.
+            Votes work locally by default, and can sync online with one shared vote per runner per IP.
+          </p>
+        </div>
+
+        <div class="hero__controls">
+          <section class="connection-panel" aria-labelledby="connectionTitle">
+            <div class="connection-panel__header">
+              <div>
+                <p class="eyebrow">Connection</p>
+                <h2 id="connectionTitle">Mode</h2>
+              </div>
+              <span id="connectionBadge" class="detail-badge">Local</span>
+            </div>
+
+            <p id="connectionStatus" class="connection-panel__status">
+              Local-only mode. Votes are stored in this browser.
+            </p>
+
+            <p id="authStatus" class="connection-panel__meta">
+              Shared mode is not configured yet. When enabled, each IP gets one vote per runner.
+            </p>
+          </section>
+
+          <label class="search-field" for="searchInput">
+            <span>Search runners</span>
+            <input
+              id="searchInput"
+              type="search"
+              placeholder="Try Ryun, Foot Locker, 2025, 3:57..."
+              autocomplete="off"
+            />
+          </label>
+
+          <label class="event-field" for="eventSortSelect">
+            <span>Order by event time</span>
+            <select id="eventSortSelect">
+              <option value="">All runners</option>
+            </select>
+          </label>
+
+          <div class="sort-group" aria-label="Sort ranking board">
+            <button class="sort-button is-active" data-sort="score" type="button">By Votes</button>
+            <button class="sort-button" data-sort="year" type="button">By Year</button>
+            <button class="sort-button" data-sort="name" type="button">By Name</button>
+            <button id="reverseSortButton" class="sort-button sort-button--reverse" type="button">
+              Reverse Order
+            </button>
+          </div>
+
+          <div class="tool-group">
+            <button id="curatorModeButton" class="ghost-button ghost-button--secondary" type="button">
+              Curator Mode
+            </button>
+            <button
+              id="setDefaultOrderButton"
+              class="ghost-button ghost-button--secondary"
+              type="button"
+            >
+              Set Current Order As Default
+            </button>
+            <button id="resetVotesButton" class="ghost-button" type="button">Reset device votes</button>
+          </div>
+        </div>
+      </header>
+
+      <section class="summary-grid" id="summaryCards" aria-label="Board summary"></section>
+
+      <main class="layout">
+        <section class="board-panel" aria-labelledby="rankingTitle">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Live board</p>
+              <h2 id="rankingTitle">Ranking Board</h2>
+            </div>
+            <p id="boardMeta" class="section-meta"></p>
+          </div>
+
+          <div id="rankingList" class="ranking-list"></div>
+        </section>
+
+        <aside id="detailPanel" class="detail-panel" aria-live="polite"></aside>
+      </main>
+    </div>
+
+    <noscript>
+      <div class="noscript-banner">This app needs JavaScript enabled to render the runner rankings.</div>
+    </noscript>
+
+    <script src="supabase-config.js"></script>
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
