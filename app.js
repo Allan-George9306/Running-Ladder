@@ -1,7 +1,7 @@
 const STORAGE_KEY = "runner-ladder-votes-v1";
 const DEFAULT_ORDER_STORAGE_KEY = "runner-ladder-default-order-v1";
 const FORCE_DEFAULT_SYNC_STORAGE_KEY = "runner-ladder-force-default-sync-version-v1";
-const FORCE_DEFAULT_SYNC_VERSION = "2026-04-22-current-order-sync-1";
+const FORCE_DEFAULT_SYNC_VERSION = "2026-04-24-cooper-lutkenhaus-seed-reset-1";
 const DEFAULT_SORT = "score";
 const STARTING_TOP_SCORE = 100;
 const REMOTE_POLL_INTERVAL_MS = 15000;
@@ -12,10 +12,9 @@ const SUPABASE_CONFIG = window.RUNNER_LADDER_SUPABASE || {};
 
 const searchInput = document.getElementById("searchInput");
 const eventSortSelect = document.getElementById("eventSortSelect");
-const resetVotesButton = document.getElementById("resetVotesButton");
-const setDefaultOrderButton = document.getElementById("setDefaultOrderButton");
-const curatorModeButton = document.getElementById("curatorModeButton");
 const reverseSortButton = document.getElementById("reverseSortButton");
+const descriptionToggleButton = document.getElementById("descriptionToggleButton");
+const descriptionPanel = document.getElementById("descriptionPanel");
 const summaryCards = document.getElementById("summaryCards");
 const boardMeta = document.getElementById("boardMeta");
 const rankingList = document.getElementById("rankingList");
@@ -30,21 +29,18 @@ const state = {
   selectedEvent: "",
   sort: DEFAULT_SORT,
   isReverseSort: false,
-  activeRunnerId: null,
-  curatorMode: false
-};
-
-const dragState = {
-  draggedRunnerId: null,
-  dropTargetId: null,
-  placeAfter: false
+  isDescriptionOpen: false,
+  runnerSuggestionStatus: null,
+  suggestionOpenRunnerId: null,
+  suggestionStatus: null,
+  activeRunnerId: null
 };
 
 const remoteState = {
   enabled: false,
   voteApiUrl: "",
   statusMessage: "Local-only mode. Votes are stored in this browser.",
-  authMessage: "Shared mode is not configured yet. When enabled, each IP gets one vote per runner.",
+  authMessage: "Vote once on each runner by choosing either an upvote or a downvote.",
   voteTotalsByRunnerId: {},
   ownVotesByRunnerId: {},
   pollHandle: null
@@ -83,6 +79,7 @@ const CURATED_DEFAULT_ORDER = [
   "Gerry Lindgren",
   "Dathan Ritzenhein",
   "Alan Webb",
+  "Cooper Lutkenhaus",
   "Lukas Verzbicas",
   "Craig Virgin",
   "Colin Sahlman",
@@ -122,9 +119,10 @@ const CURATED_DEFAULT_ORDER = [
   "Rocky Hansen",
   "Futsum Zienasellassie",
   "Don Sage",
-  "Reed Brown",
-  "Cooper Lutkenhaus"
+  "Reed Brown"
 ];
+
+const COMING_SOON_SLOTS = 3;
 
 const BASELINE_STAT_WEIGHTS = [6, 0.55, 0.08];
 const BASELINE_ACHIEVEMENT_WEIGHTS = [0.32, 0.08, 0.02];
@@ -303,40 +301,6 @@ function getDefaultOrderRank(runnerName) {
 
 function getRunnerByIdFromDataset(runnerId) {
   return runnerData.find((runner) => runner.id === runnerId) || null;
-}
-
-function getRunnerNameById(runnerId) {
-  return getRunnerByIdFromDataset(runnerId)?.name || null;
-}
-
-function canUseCuratorTools() {
-  return !state.search.trim() && !state.selectedEvent && state.sort === "score" && !state.isReverseSort;
-}
-
-function getCuratorToolBlockReason() {
-  if (state.selectedEvent) {
-    return "Clear the event filter to edit the saved board order.";
-  }
-
-  if (state.search.trim()) {
-    return "Clear search to edit the full board order.";
-  }
-
-  if (state.sort !== "score") {
-    return "Switch back to By Votes to edit the saved board order.";
-  }
-
-  if (state.isReverseSort) {
-    return "Turn off reverse order to edit the saved board order.";
-  }
-
-  return "Curator tools are ready.";
-}
-
-function clearDragState() {
-  dragState.draggedRunnerId = null;
-  dragState.dropTargetId = null;
-  dragState.placeAfter = false;
 }
 
 function getRunnerBestMarksByEvent(runner) {
@@ -615,8 +579,7 @@ function forceCurrentOrderToDefaultOnce() {
     return;
   }
 
-  const startingScoreById = getStartingScoreByRunnerId();
-  defaultOrder = buildCompleteDefaultOrder(getSortedRunnerNamesForCurrentVotes(startingScoreById));
+  defaultOrder = buildCompleteDefaultOrder(CURATED_DEFAULT_ORDER);
   defaultOrderIndex = buildDefaultOrderIndex(defaultOrder);
   saveDefaultOrder(defaultOrder);
   voteStore = {};
@@ -681,13 +644,9 @@ async function invokeVoteApi({ method = "GET", payload } = {}) {
 function applyRemoteVoteSnapshot(snapshot) {
   remoteState.voteTotalsByRunnerId = snapshot?.totals || {};
   remoteState.ownVotesByRunnerId = snapshot?.ownVotes || {};
-
-  if (snapshot?.message) {
-    remoteState.statusMessage = snapshot.message;
-  }
-
+  remoteState.statusMessage = "Shared voting is live across the public board.";
   remoteState.authMessage =
-    snapshot?.meta || "One vote per runner per IP address. No sign-in required.";
+    "Vote once on each runner by choosing either an upvote or a downvote.";
 }
 
 function getRemoteVoteAggregateRows() {
@@ -707,7 +666,7 @@ async function loadRemoteVotes({ silent = false } = {}) {
     applyRemoteVoteSnapshot(snapshot);
   } catch (error) {
     remoteState.statusMessage = `Shared votes could not load: ${error.message}`;
-    remoteState.authMessage = "Shared voting is enabled, but the vote service is not responding yet.";
+    remoteState.authMessage = "Voting should update live here once the shared service responds.";
     remoteState.voteTotalsByRunnerId = {};
     remoteState.ownVotesByRunnerId = {};
 
@@ -725,7 +684,7 @@ async function loadRemoteVotes({ silent = false } = {}) {
 async function loadRemoteData({ silent = false } = {}) {
   runnerData = cloneRunnerData(LOCAL_RUNNER_DATA);
   defaultOrder = buildCompleteDefaultOrder(loadDefaultOrder() || CURATED_DEFAULT_ORDER);
-  remoteState.statusMessage = "Shared voting is live. Runner data comes from the bundled app list.";
+  remoteState.statusMessage = "Shared voting is live across the public board.";
   refreshComputedState();
 
   if (!silent) {
@@ -751,14 +710,16 @@ async function initializeSharedMode() {
   if (!isSharedModeConfigured()) {
     remoteState.enabled = false;
     remoteState.statusMessage = "Local-only mode. Votes are stored in this browser.";
-    remoteState.authMessage = "Shared mode is not configured yet. When enabled, each IP gets one vote per runner.";
+    remoteState.authMessage =
+      "Vote once on each runner by choosing either an upvote or a downvote.";
     return;
   }
 
   remoteState.enabled = true;
   remoteState.voteApiUrl = getVoteFunctionUrl();
   remoteState.statusMessage = "Connecting to shared vote service...";
-  remoteState.authMessage = "One vote per runner per IP address. No sign-in required.";
+  remoteState.authMessage =
+    "Vote once on each runner by choosing either an upvote or a downvote.";
 
   await loadRemoteData({ silent: true });
   await loadRemoteVotes({ silent: true });
@@ -787,83 +748,6 @@ function getVoteTotals(runnerId) {
     down: remoteTotals.down || 0,
     ownValue: remoteState.ownVotesByRunnerId[runnerId] || 0
   };
-}
-
-function getCurrentBoardOrderNames() {
-  return getVisibleRunners().map((runner) => runner.name);
-}
-
-async function setCurrentOrderAsDefault() {
-  if (!canUseCuratorTools()) {
-    window.alert(getCuratorToolBlockReason());
-    return;
-  }
-
-  const shouldSet = window.confirm(
-    "Save the current board order as the new default for this app? Shared vote totals will stay in place."
-  );
-  if (!shouldSet) {
-    return;
-  }
-
-  applyDefaultOrder(getCurrentBoardOrderNames(), {
-    clearVotes: false,
-    persist: true
-  });
-
-  state.curatorMode = false;
-  clearDragState();
-  render();
-}
-
-async function toggleCuratorMode() {
-  if (state.curatorMode) {
-    state.curatorMode = false;
-    clearDragState();
-    render();
-    return;
-  }
-
-  if (!canUseCuratorTools()) {
-    window.alert(getCuratorToolBlockReason());
-    return;
-  }
-
-  if (hasVoteChanges(voteStore) && !remoteState.enabled) {
-    const shouldConvert = window.confirm(
-      "Curator mode edits the saved default order directly. Use the current board order as the new default and clear device-local vote changes first?"
-    );
-
-    if (!shouldConvert) {
-      return;
-    }
-
-    applyDefaultOrder(getCurrentBoardOrderNames(), { clearVotes: true, persist: true });
-  }
-
-  state.curatorMode = true;
-  clearDragState();
-  render();
-}
-
-function moveRunnerInDefaultOrder(draggedRunnerId, targetRunnerId, placeAfter) {
-  const draggedRunnerName = getRunnerNameById(draggedRunnerId);
-  const targetRunnerName = getRunnerNameById(targetRunnerId);
-
-  if (!draggedRunnerName || !targetRunnerName || draggedRunnerName === targetRunnerName) {
-    return;
-  }
-
-  const nextOrder = defaultOrder.filter((runnerName) => runnerName !== draggedRunnerName);
-  const targetIndex = nextOrder.indexOf(targetRunnerName);
-
-  if (targetIndex === -1) {
-    nextOrder.push(draggedRunnerName);
-  } else {
-    nextOrder.splice(targetIndex + (placeAfter ? 1 : 0), 0, draggedRunnerName);
-  }
-
-  applyDefaultOrder(nextOrder, { persist: true });
 }
 
 function getEventOptions() {
@@ -1070,39 +954,19 @@ function getFillColor(runner) {
   return "rgba(63, 109, 180, 0.14)";
 }
 
-function syncDragIndicators() {
-  rankingList.querySelectorAll("[data-runner-card]").forEach((card) => {
-    const runnerId = card.dataset.runnerCard;
-
-    card.classList.toggle("is-dragging", runnerId === dragState.draggedRunnerId);
-    card.classList.toggle(
-      "is-drop-before",
-      runnerId === dragState.dropTargetId && !dragState.placeAfter
-    );
-    card.classList.toggle(
-      "is-drop-after",
-      runnerId === dragState.dropTargetId && dragState.placeAfter
-    );
-  });
-}
-
-function clearDragIndicators() {
-  clearDragState();
-  syncDragIndicators();
-}
 function renderConnectionPanel() {
   if (!remoteState.enabled) {
     connectionBadge.textContent = "Local";
     connectionStatus.textContent = "Local-only mode. Votes are stored in this browser.";
     authStatus.textContent =
-      "Shared mode is not configured yet. When enabled, each IP gets one vote per runner.";
+      "Vote once on each runner by choosing either an upvote or a downvote.";
     return;
   }
 
   connectionBadge.textContent = "Shared";
   connectionStatus.textContent = remoteState.statusMessage;
   authStatus.textContent =
-    remoteState.authMessage || "One vote per runner per IP address. No sign-in required.";
+    remoteState.authMessage || "Vote once on each runner by choosing either an upvote or a downvote.";
 }
 
 function renderSummary(runners) {
@@ -1135,7 +999,7 @@ function renderSummary(runners) {
       label: "Votes Cast",
       value: String(totalVotes),
       meta: remoteState.enabled
-        ? "Shared vote totals from all visitors, limited to one vote per runner per IP."
+        ? "Shared vote totals from all visitors, with one upvote or downvote available on each runner."
         : "Device-local tallies that reorder the ranking live."
     },
     {
@@ -1166,12 +1030,122 @@ function renderSummary(runners) {
 }
 
 function renderRunnerCards(runners) {
+  const placeholderCards = Array.from({ length: COMING_SOON_SLOTS }, (_, index) => {
+    const slotNumber = index + 1;
+    const slotLabel = `Coming Soon ${slotNumber}`;
+    const slotStatus =
+      state.runnerSuggestionStatus?.slot === slotNumber ? state.runnerSuggestionStatus : null;
+
+    return `
+      <article class="runner-card runner-card--placeholder" aria-label="${escapeHtml(slotLabel)}">
+        <div class="runner-card__content">
+          <div class="runner-card__rank runner-card__rank--placeholder">+</div>
+
+          <div class="runner-card__open runner-card__open--placeholder" aria-hidden="true">
+            <div class="runner-card__title">
+              <h3>${escapeHtml(slotLabel)}</h3>
+              <span class="runner-card__season">Feedback Slot</span>
+            </div>
+            <p class="runner-card__meta">
+              Future additions may be added here based on community feedback and update suggestions.
+            </p>
+          </div>
+
+          <div class="runner-card__votes">
+            <div class="score-block score-block--locked">
+              <span class="score-block__label">Status</span>
+              <strong>Locked</strong>
+              <span class="score-block__counts">Voting opens when a new runner is added.</span>
+            </div>
+
+            <div class="vote-stack">
+              <button class="vote-button vote-button--locked" type="button" disabled>
+                Voting Locked
+              </button>
+              <button class="vote-button vote-button--locked" type="button" disabled>
+                Voting Locked
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="runner-card__footer runner-card__footer--placeholder">
+          <div class="runner-card__footer-copy">
+            <p class="runner-card__footer-title">Suggest A Runner</p>
+            <p class="runner-card__footer-text">
+              Think someone belongs on the board? Send a name, a short case, and any source you
+              want reviewed.
+            </p>
+          </div>
+
+          ${
+            slotStatus
+              ? `
+                <p class="suggestion-card__status suggestion-card__status--${escapeHtml(slotStatus.tone)}">
+                  ${escapeHtml(slotStatus.message)}
+                </p>
+              `
+              : ""
+          }
+
+          ${
+            remoteState.enabled
+              ? `
+                <form class="suggestion-form suggestion-form--placeholder" data-runner-suggestion-form="${slotNumber}">
+                  <label>
+                    <span>Runner Name</span>
+                    <input
+                      type="text"
+                      name="candidateName"
+                      placeholder="Who should be added next?"
+                      maxlength="80"
+                      required
+                    />
+                  </label>
+
+                  <label>
+                    <span>Why Should They Be Added?</span>
+                    <textarea
+                      name="reason"
+                      placeholder="Share the case for this runner: times, wins, range, or historical significance."
+                      maxlength="320"
+                      required
+                    ></textarea>
+                  </label>
+
+                  <label>
+                    <span>Source Or Proof</span>
+                    <input
+                      type="text"
+                      name="source"
+                      placeholder="Optional link, meet, ranking, or source note"
+                      maxlength="200"
+                    />
+                  </label>
+
+                  <button class="ghost-button suggestion-form__submit" type="submit">
+                    Suggest Runner
+                  </button>
+                </form>
+              `
+              : `
+                <p class="suggestion-card__meta">
+                  Runner suggestions open on the shared online version of the board.
+                </p>
+              `
+          }
+        </div>
+      </article>
+    `;
+  }).join("");
+
   if (!runners.length) {
     rankingList.innerHTML = `
       <div class="empty-state">
         <h3>No runners match that search.</h3>
         <p>Try a different year, name, event, or meet name to pull athletes back into view.</p>
       </div>
+      ${placeholderCards}
     `;
     return;
   }
@@ -1183,28 +1157,19 @@ function renderRunnerCards(runners) {
     }),
     { min: 0, max: 0 }
   );
-  const isCuratorDragEnabled = state.curatorMode && canUseCuratorTools();
 
-  rankingList.innerHTML = runners
-    .map((runner, index) => {
+  rankingList.innerHTML =
+    runners
+      .map((runner, index) => {
       const scoreToneClass =
         runner.score > 0 ? "is-positive" : runner.score < 0 ? "is-negative" : "";
-      const dropClass =
-        dragState.dropTargetId === runner.id
-          ? dragState.placeAfter
-            ? " is-drop-after"
-            : " is-drop-before"
-          : "";
       const upSelected = runner.votes.ownValue === 1 ? " is-selected" : "";
       const downSelected = runner.votes.ownValue === -1 ? " is-selected" : "";
 
       return `
         <article
-          class="runner-card ${runner.id === state.activeRunnerId ? "is-active" : ""}${
-            isCuratorDragEnabled ? " is-draggable" : ""
-          }${dragState.draggedRunnerId === runner.id ? " is-dragging" : ""}${dropClass}"
+          class="runner-card ${runner.id === state.activeRunnerId ? "is-active" : ""}"
           data-runner-card="${escapeHtml(runner.id)}"
-          draggable="${isCuratorDragEnabled ? "true" : "false"}"
           style="--fill-width: ${getFillWidth(runner, index, runners, range)}%; --fill-color: ${getFillColor(
             runner
           )};"
@@ -1217,11 +1182,7 @@ function renderRunnerCards(runners) {
                 <h3>${escapeHtml(runner.name)}</h3>
                 <span class="runner-card__season">${escapeHtml(runner.season)}</span>
               </div>
-              <p class="runner-card__meta">${
-                state.curatorMode
-                  ? "Drag to reorder or select to view stats and achievements."
-                  : "Select to view stats and achievements."
-              }</p>
+              <p class="runner-card__meta">Select to view stats and achievements.</p>
             </button>
 
             <div class="runner-card__votes">
@@ -1255,12 +1216,115 @@ function renderRunnerCards(runners) {
           </div>
         </article>
       `;
-    })
-    .join("");
+      })
+      .join("") + placeholderCards;
 }
 
 function renderAdminPanel() {
   return "";
+}
+
+function getSuggestionStatusMarkup(activeRunner) {
+  const suggestionStatus =
+    state.suggestionStatus?.runnerId === activeRunner.id ? state.suggestionStatus : null;
+
+  if (!suggestionStatus) {
+    return "";
+  }
+
+  return `
+    <p class="suggestion-card__status suggestion-card__status--${escapeHtml(suggestionStatus.tone)}">
+      ${escapeHtml(suggestionStatus.message)}
+    </p>
+  `;
+}
+
+function renderSuggestionPanel(activeRunner) {
+  const isSuggestionOpen = state.suggestionOpenRunnerId === activeRunner.id;
+  const suggestionButtonLabel = isSuggestionOpen ? "Hide Form" : "Suggest An Update";
+  const suggestionDescription = remoteState.enabled
+    ? "Know a missing PR, result, or correction for this runner? Send it in for review."
+    : "Update suggestions open on the shared online version of the board.";
+
+  return `
+    <section class="detail-section suggestion-card">
+      <div class="detail-section__header">
+        <div>
+          <h3>Suggest An Update</h3>
+          <p class="suggestion-card__meta">${escapeHtml(suggestionDescription)}</p>
+        </div>
+        <button
+          class="ghost-button ghost-button--secondary suggestion-card__toggle"
+          type="button"
+          data-suggestion-toggle="${escapeHtml(activeRunner.id)}"
+        >
+          ${escapeHtml(suggestionButtonLabel)}
+        </button>
+      </div>
+
+      ${getSuggestionStatusMarkup(activeRunner)}
+
+      ${
+        remoteState.enabled && isSuggestionOpen
+          ? `
+            <form class="suggestion-form" data-suggestion-form="${escapeHtml(activeRunner.id)}">
+              <label>
+                <span>Event Or Category</span>
+                <input
+                  type="text"
+                  name="event"
+                  placeholder="Example: 3200m, 5000m, Foot Locker XC"
+                  maxlength="80"
+                />
+              </label>
+
+              <label>
+                <span>Mark Or Result</span>
+                <input
+                  type="text"
+                  name="mark"
+                  placeholder="Example: 8:41.32, champion, 2nd"
+                  maxlength="80"
+                />
+              </label>
+
+              <label>
+                <span>Achievement Or Race Note</span>
+                <textarea
+                  name="achievement"
+                  placeholder="Add a missing title, placing, or noteworthy performance."
+                  maxlength="240"
+                ></textarea>
+              </label>
+
+              <label>
+                <span>Source Or Proof</span>
+                <input
+                  type="text"
+                  name="source"
+                  placeholder="Optional link, meet name, or where the stat can be checked"
+                  maxlength="200"
+                />
+              </label>
+
+              <label>
+                <span>Extra Context</span>
+                <textarea
+                  name="note"
+                  placeholder="Optional context that helps explain the submission."
+                  maxlength="280"
+                ></textarea>
+              </label>
+
+              <button class="ghost-button suggestion-form__submit" type="submit">
+                Send Suggestion
+              </button>
+            </form>
+          `
+          : ""
+      }
+    </section>
+  `;
 }
 
 function renderDetailPanel(activeRunner) {
@@ -1318,10 +1382,10 @@ function renderDetailPanel(activeRunner) {
   const voteMeta = remoteState.enabled
     ? `${activeRunner.votes.up} shared upvotes and ${activeRunner.votes.down} shared downvotes.${
         activeRunner.votes.ownValue === 1
-          ? " This IP's vote: upvote."
+          ? " Your vote on this runner: upvote."
           : activeRunner.votes.ownValue === -1
-            ? " This IP's vote: downvote."
-            : " This IP has not voted on this runner yet."
+            ? " Your vote on this runner: downvote."
+            : " You have not voted on this runner yet."
       }`
     : `${activeRunner.votes.up} upvotes and ${activeRunner.votes.down} downvotes on this device.`;
 
@@ -1377,17 +1441,14 @@ function renderDetailPanel(activeRunner) {
         <ul class="achievement-list">${achievementMarkup}</ul>
       </section>
 
+      ${renderSuggestionPanel(activeRunner)}
+
       ${renderAdminPanel(activeRunner)}
     </div>
   `;
 }
 
 function render() {
-  if (state.curatorMode && !canUseCuratorTools()) {
-    state.curatorMode = false;
-    clearDragState();
-  }
-
   syncSortButtons();
   renderConnectionPanel();
 
@@ -1396,9 +1457,7 @@ function render() {
   const activeRunner = getRunnerById(visibleRunners, state.activeRunnerId);
 
   const baseMeta = `${visibleRunners.length} runners shown, sorted by ${getSortLabel()} ${getSortDirectionLabel()}.`;
-  boardMeta.textContent = state.curatorMode
-    ? `Curator mode is on. Drag cards to reorder the saved default board. ${baseMeta}`
-    : baseMeta;
+  boardMeta.textContent = baseMeta;
   renderSummary(visibleRunners);
   renderRunnerCards(visibleRunners);
   renderDetailPanel(activeRunner);
@@ -1446,34 +1505,124 @@ async function castVote(runnerId, voteType) {
   render();
 }
 
-async function resetVotes() {
-  if (remoteState.enabled) {
-    const shouldReset = window.confirm("Clear this IP's shared votes across all runners?");
-    if (!shouldReset) {
-      return;
-    }
+async function submitRunnerUpdateSuggestion(runnerId, formElement) {
+  const runner = getRunnerByIdFromDataset(runnerId);
+  if (!runner) {
+    return;
+  }
 
-    try {
-      const snapshot = await invokeVoteApi({ method: "DELETE" });
-      applyRemoteVoteSnapshot(snapshot);
-    } catch (error) {
-      window.alert(`Shared vote reset failed: ${error.message}`);
-      return;
-    }
-
+  if (!remoteState.enabled) {
+    state.suggestionStatus = {
+      runnerId,
+      tone: "error",
+      message: "Suggestions are available on the shared online version of the board."
+    };
     render();
     return;
   }
 
-  const shouldReset = window.confirm(
-    "Reset all device-local vote changes and return to the starting rank scores?"
-  );
-  if (!shouldReset) {
+  const formData = new FormData(formElement);
+  const event = String(formData.get("event") || "").trim();
+  const mark = String(formData.get("mark") || "").trim();
+  const achievement = String(formData.get("achievement") || "").trim();
+  const source = String(formData.get("source") || "").trim();
+  const note = String(formData.get("note") || "").trim();
+
+  if (!event && !mark && !achievement && !note) {
+    state.suggestionStatus = {
+      runnerId,
+      tone: "error",
+      message: "Add at least one stat, result, or note before sending the suggestion."
+    };
+    render();
     return;
   }
 
-  voteStore = {};
-  localStorage.removeItem(STORAGE_KEY);
+  try {
+    const result = await invokeVoteApi({
+      method: "POST",
+      payload: {
+        action: "submit-runner-update",
+        runnerId: runner.id,
+        runnerName: runner.name,
+        season: runner.season,
+        event,
+        mark,
+        achievement,
+        source,
+        note
+      }
+    });
+
+    state.suggestionOpenRunnerId = null;
+    state.suggestionStatus = {
+      runnerId,
+      tone: "success",
+      message: result?.message || "Thanks. Your update suggestion was sent for review."
+    };
+  } catch (error) {
+    state.suggestionStatus = {
+      runnerId,
+      tone: "error",
+      message: `Suggestion failed: ${error.message}`
+    };
+  }
+
+  render();
+}
+
+async function submitRunnerSuggestion(slot, formElement) {
+  if (!remoteState.enabled) {
+    state.runnerSuggestionStatus = {
+      slot: Number(slot),
+      tone: "error",
+      message: "Runner suggestions are available on the shared online version of the board."
+    };
+    render();
+    return;
+  }
+
+  const formData = new FormData(formElement);
+  const candidateName = String(formData.get("candidateName") || "").trim();
+  const reason = String(formData.get("reason") || "").trim();
+  const source = String(formData.get("source") || "").trim();
+
+  if (!candidateName || !reason) {
+    state.runnerSuggestionStatus = {
+      slot: Number(slot),
+      tone: "error",
+      message: "Add both a runner name and a short explanation before sending."
+    };
+    render();
+    return;
+  }
+
+  try {
+    const result = await invokeVoteApi({
+      method: "POST",
+      payload: {
+        action: "submit-runner-suggestion",
+        slotHint: Number(slot),
+        candidateName,
+        reason,
+        source
+      }
+    });
+
+    formElement.reset();
+    state.runnerSuggestionStatus = {
+      slot: Number(slot),
+      tone: "success",
+      message: result?.message || "Thanks. Your runner suggestion was sent for review."
+    };
+  } catch (error) {
+    state.runnerSuggestionStatus = {
+      slot: Number(slot),
+      tone: "error",
+      message: `Suggestion failed: ${error.message}`
+    };
+  }
+
   render();
 }
 
@@ -1482,22 +1631,13 @@ function syncSortButtons() {
     button.classList.toggle("is-active", button.dataset.sort === state.sort);
   });
 
-  const curatorToolsReady = canUseCuratorTools();
   reverseSortButton.classList.toggle("is-active", state.isReverseSort);
   reverseSortButton.textContent = state.isReverseSort ? "Normal Order" : "Reverse Order";
   reverseSortButton.setAttribute("aria-pressed", String(state.isReverseSort));
 
-  curatorModeButton.classList.toggle("is-active", state.curatorMode);
-  curatorModeButton.textContent = state.curatorMode ? "Exit Curator Mode" : "Curator Mode";
-  curatorModeButton.setAttribute("aria-pressed", String(state.curatorMode));
-  curatorModeButton.disabled = !curatorToolsReady && !state.curatorMode;
-  curatorModeButton.title = state.curatorMode ? "" : getCuratorToolBlockReason();
-
-  setDefaultOrderButton.textContent = "Set Current Order As Default";
-  setDefaultOrderButton.disabled = !curatorToolsReady;
-  setDefaultOrderButton.title = curatorToolsReady ? "" : getCuratorToolBlockReason();
-
-  resetVotesButton.textContent = remoteState.enabled ? "Clear Shared Votes" : "Reset device votes";
+  descriptionToggleButton.classList.toggle("is-active", state.isDescriptionOpen);
+  descriptionToggleButton.setAttribute("aria-expanded", String(state.isDescriptionOpen));
+  descriptionPanel.hidden = !state.isDescriptionOpen;
 }
 
 function bindEvents() {
@@ -1523,16 +1663,9 @@ function bindEvents() {
     render();
   });
 
-  curatorModeButton.addEventListener("click", () => {
-    void toggleCuratorMode();
-  });
-
-  setDefaultOrderButton.addEventListener("click", () => {
-    void setCurrentOrderAsDefault();
-  });
-
-  resetVotesButton.addEventListener("click", () => {
-    void resetVotes();
+  descriptionToggleButton.addEventListener("click", () => {
+    state.isDescriptionOpen = !state.isDescriptionOpen;
+    render();
   });
 
   window.addEventListener("focus", () => {
@@ -1547,69 +1680,6 @@ function bindEvents() {
     }
   });
 
-  rankingList.addEventListener("dragstart", (event) => {
-    if (!state.curatorMode || !canUseCuratorTools()) {
-      return;
-    }
-
-    const card = event.target.closest("[data-runner-card]");
-    if (!card) {
-      return;
-    }
-
-    dragState.draggedRunnerId = card.dataset.runnerCard;
-    dragState.dropTargetId = null;
-    dragState.placeAfter = false;
-
-    if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = "move";
-      event.dataTransfer.setData("text/plain", dragState.draggedRunnerId);
-    }
-
-    syncDragIndicators();
-  });
-
-  rankingList.addEventListener("dragover", (event) => {
-    if (!state.curatorMode || !canUseCuratorTools() || !dragState.draggedRunnerId) {
-      return;
-    }
-
-    const card = event.target.closest("[data-runner-card]");
-    if (!card || card.dataset.runnerCard === dragState.draggedRunnerId) {
-      return;
-    }
-
-    event.preventDefault();
-
-    const cardBounds = card.getBoundingClientRect();
-    dragState.dropTargetId = card.dataset.runnerCard;
-    dragState.placeAfter = event.clientY > cardBounds.top + cardBounds.height / 2;
-    syncDragIndicators();
-  });
-
-  rankingList.addEventListener("drop", (event) => {
-    if (!state.curatorMode || !canUseCuratorTools() || !dragState.draggedRunnerId) {
-      return;
-    }
-
-    event.preventDefault();
-
-    if (dragState.dropTargetId) {
-      moveRunnerInDefaultOrder(
-        dragState.draggedRunnerId,
-        dragState.dropTargetId,
-        dragState.placeAfter
-      );
-    }
-
-    clearDragIndicators();
-    render();
-  });
-
-  rankingList.addEventListener("dragend", () => {
-    clearDragIndicators();
-  });
-
   document.addEventListener("click", (event) => {
     const voteButton = event.target.closest("[data-vote-type][data-runner-id]");
     if (voteButton) {
@@ -1617,10 +1687,42 @@ function bindEvents() {
       return;
     }
 
+    const suggestionToggle = event.target.closest("[data-suggestion-toggle]");
+    if (suggestionToggle) {
+      const runnerId = suggestionToggle.dataset.suggestionToggle;
+      state.suggestionOpenRunnerId = state.suggestionOpenRunnerId === runnerId ? null : runnerId;
+      if (state.suggestionStatus?.runnerId !== runnerId) {
+        state.suggestionStatus = null;
+      }
+      render();
+      return;
+    }
+
     const openButton = event.target.closest("[data-open-id]");
     if (openButton) {
       state.activeRunnerId = openButton.dataset.openId;
+      if (state.suggestionStatus?.runnerId !== state.activeRunnerId) {
+        state.suggestionStatus = null;
+      }
       render();
+    }
+  });
+
+  document.addEventListener("submit", (event) => {
+    const suggestionForm = event.target.closest("[data-suggestion-form]");
+    if (suggestionForm) {
+      event.preventDefault();
+      void submitRunnerUpdateSuggestion(suggestionForm.dataset.suggestionForm, suggestionForm);
+      return;
+    }
+
+    const runnerSuggestionForm = event.target.closest("[data-runner-suggestion-form]");
+    if (runnerSuggestionForm) {
+      event.preventDefault();
+      void submitRunnerSuggestion(
+        runnerSuggestionForm.dataset.runnerSuggestionForm,
+        runnerSuggestionForm
+      );
     }
   });
 }
