@@ -1165,6 +1165,8 @@ function renderRunnerCards(runners) {
         runner.score > 0 ? "is-positive" : runner.score < 0 ? "is-negative" : "";
       const upSelected = runner.votes.ownValue === 1 ? " is-selected" : "";
       const downSelected = runner.votes.ownValue === -1 ? " is-selected" : "";
+      const inlineDetailMarkup =
+        runner.id === state.activeRunnerId ? renderInlineDetailPanel(runner) : "";
 
       return `
         <article
@@ -1215,6 +1217,7 @@ function renderRunnerCards(runners) {
             </div>
           </div>
         </article>
+        ${inlineDetailMarkup}
       `;
       })
       .join("") + placeholderCards;
@@ -1327,23 +1330,7 @@ function renderSuggestionPanel(activeRunner) {
   `;
 }
 
-function renderDetailPanel(activeRunner) {
-  if (!activeRunner) {
-    detailPanel.innerHTML = `
-      <div class="detail-panel__inner">
-        <div class="detail-placeholder">
-          <p class="eyebrow">Runner profile</p>
-          <h2>Pick a runner from the board.</h2>
-          <p class="detail-copy">
-            The right-hand panel will show event marks, achievements, and live voting controls.
-          </p>
-        </div>
-        ${renderAdminPanel(null)}
-      </div>
-    `;
-    return;
-  }
-
+function getDetailPanelContent(activeRunner) {
   const statMarkup = activeRunner.stats.length
     ? activeRunner.stats
         .map(
@@ -1389,7 +1376,7 @@ function renderDetailPanel(activeRunner) {
       }`
     : `${activeRunner.votes.up} upvotes and ${activeRunner.votes.down} downvotes on this device.`;
 
-  detailPanel.innerHTML = `
+  return `
     <div class="detail-panel__inner">
       <div class="detail-panel__hero">
         <p class="eyebrow">Runner profile</p>
@@ -1446,6 +1433,41 @@ function renderDetailPanel(activeRunner) {
       ${renderAdminPanel(activeRunner)}
     </div>
   `;
+}
+
+function renderInlineDetailPanel(activeRunner) {
+  if (!activeRunner) {
+    return "";
+  }
+
+  return `
+    <section
+      class="detail-panel detail-panel--inline"
+      aria-label="${escapeHtml(`${activeRunner.name} profile`)}"
+    >
+      ${getDetailPanelContent(activeRunner)}
+    </section>
+  `;
+}
+
+function renderDetailPanel(activeRunner) {
+  if (!activeRunner) {
+    detailPanel.innerHTML = `
+      <div class="detail-panel__inner">
+        <div class="detail-placeholder">
+          <p class="eyebrow">Runner profile</p>
+          <h2>Pick a runner from the board.</h2>
+          <p class="detail-copy">
+            The right-hand panel will show event marks, achievements, and live voting controls.
+          </p>
+        </div>
+        ${renderAdminPanel(null)}
+      </div>
+    `;
+    return;
+  }
+
+  detailPanel.innerHTML = getDetailPanelContent(activeRunner);
 }
 
 function render() {
