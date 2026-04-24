@@ -12,31 +12,66 @@
         <div class="hero__copy">
           <p class="eyebrow">Crowd-ranked distance legends</p>
           <h1>Runner Ladder</h1>
+          <section class="connection-panel connection-panel--hero" aria-label="Voting details">
+            <div class="connection-panel__hero-row">
+              <p id="connectionStatus" class="connection-panel__status">
+                Vote once on each runner by choosing either an upvote or a downvote.
+              </p>
+              <span id="connectionBadge" class="detail-badge">Local</span>
+            </div>
+
+            <p id="authStatus" class="connection-panel__meta">
+              Votes are currently stored in this browser.
+            </p>
+          </section>
+          <div class="hero__actions">
+            <button
+              id="descriptionToggleButton"
+              class="ghost-button ghost-button--secondary hero__description-button"
+              type="button"
+              aria-expanded="false"
+              aria-controls="descriptionPanel"
+            >
+              Description
+            </button>
+          </div>
+          <section id="descriptionPanel" class="description-panel" hidden>
+            <div class="description-panel__inner">
+              <p class="eyebrow">Board Guide</p>
+              <h2>How To Use The Ranking</h2>
+              <p class="description-panel__copy">
+                Use the board to compare runners, open individual profiles, and cast one vote on
+                each athlete by choosing either an upvote or a downvote. Search can narrow the
+                field by runner, meet, year, or mark, and the event-time menu can isolate athletes
+                who have a recorded performance in the selected event.
+              </p>
+              <p class="description-panel__copy">
+                The board also includes feedback tools for future updates. Use the profile
+                suggestion form to submit missing marks, results, or corrections for existing
+                runners, and use the Coming Soon suggestion slots at the bottom of the board to
+                recommend athletes who should be considered for addition.
+              </p>
+              <p class="description-panel__copy">
+                Rankings should be based on distance-running quality rather than popularity. The
+                strongest cases should come from track and cross country distance racing, major race
+                victories, historically strong times, and meaningful versatility across distances
+                and surfaces.
+              </p>
+              <ul class="description-panel__list">
+                <li>Prioritize distance events on the track and in cross country.</li>
+                <li>Reward championship-level wins and other major race victories.</li>
+                <li>Give substantial weight to elite times and historically significant marks.</li>
+                <li>Credit athletes who showed range across multiple distance events.</li>
+              </ul>
+            </div>
+          </section>
           <p class="hero__text">
             Browse the board, open a runner profile, and push athletes up or down the list.
-            Votes work locally by default, and can sync online with one shared vote per runner per IP.
+            Shared totals can update live across the public board.
           </p>
         </div>
 
         <div class="hero__controls">
-          <section class="connection-panel" aria-labelledby="connectionTitle">
-            <div class="connection-panel__header">
-              <div>
-                <p class="eyebrow">Connection</p>
-                <h2 id="connectionTitle">Mode</h2>
-              </div>
-              <span id="connectionBadge" class="detail-badge">Local</span>
-            </div>
-
-            <p id="connectionStatus" class="connection-panel__status">
-              Local-only mode. Votes are stored in this browser.
-            </p>
-
-            <p id="authStatus" class="connection-panel__meta">
-              Shared mode is not configured yet. When enabled, each IP gets one vote per runner.
-            </p>
-          </section>
-
           <label class="search-field" for="searchInput">
             <span>Search runners</span>
             <input
@@ -63,19 +98,6 @@
             </button>
           </div>
 
-          <div class="tool-group">
-            <button id="curatorModeButton" class="ghost-button ghost-button--secondary" type="button">
-              Curator Mode
-            </button>
-            <button
-              id="setDefaultOrderButton"
-              class="ghost-button ghost-button--secondary"
-              type="button"
-            >
-              Set Current Order As Default
-            </button>
-            <button id="resetVotesButton" class="ghost-button" type="button">Reset device votes</button>
-          </div>
         </div>
       </header>
 
