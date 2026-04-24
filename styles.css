@@ -462,6 +462,16 @@ body::after {
   overflow: hidden;
 }
 
+.detail-panel--inline {
+  display: none;
+  position: static;
+  top: auto;
+  align-self: stretch;
+  max-height: none;
+  overflow: visible;
+  margin-top: 0.15rem;
+}
+
 .section-header {
   display: flex;
   justify-content: space-between;
@@ -1091,6 +1101,21 @@ body::after {
   .board-panel,
   .detail-panel {
     border-radius: 10px;
+  }
+
+  .detail-panel {
+    display: none;
+  }
+
+  .detail-panel--inline {
+    display: block;
+  }
+
+  .detail-panel--inline .detail-panel__inner {
+    max-height: none;
+    overflow: visible;
+    overscroll-behavior: auto;
+    padding: 1rem;
   }
 
   .summary-grid {
